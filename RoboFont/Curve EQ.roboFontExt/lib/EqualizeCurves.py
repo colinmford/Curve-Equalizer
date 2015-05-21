@@ -28,6 +28,8 @@ from math import sqrt as msqrt
 from defconAppKit.windows.baseWindow import BaseWindowController
 from mojo.extensions import getExtensionDefault, setExtensionDefault
 
+from random import random
+
 # For experimental quadratic optimization:
 from fontTools.misc.bezierTools import calcCubicParameters, calcCubicPoints
 
@@ -184,6 +186,7 @@ class CurveEqualizer(BaseWindowController):
         addObserver(self, "_currentGlyphChanged", "currentGlyphChanged")
         
         self.tmp_glyph = RGlyph()
+        self.prev_glyph = RGlyph()
         #self._currentGlyphChanged({"glyph": CurrentGlyph()})
         UpdateCurrentGlyphView()
         
@@ -265,11 +268,28 @@ class CurveEqualizer(BaseWindowController):
     def _curvePreview(self, info):
         _doodle_glyph = info["glyph"]
         if CurrentGlyph() is not None and _doodle_glyph is not None and len(_doodle_glyph.components) == 0 and _doodle_glyph.selection != []:
+            ########
+            # Here's how this works: if there is a current glyph, and that glyph has a selection, we get here
+            # then there is a temp glyph, in memory. Every "draw", this is called, it clears the glyph
+            # and then draws the current glyph in its place, then equilizes that glyph in a different
+            # method, then draws it into this view.
+            # The problem is the outline is not updating. If you commit the change it shows up, but this memory
+            # glyph isn't getting redrawn ever. Ether the outlines are getting changed and the problem is in 
+            # the view, or the glyph is not getting updated and is redrawing the same thing over and over.
+            #######
             self.tmp_glyph.clear()
             self.tmp_glyph.appendGlyph(_doodle_glyph)
+            # I think what needs to happen here is instead of this mysterious function happening, 
+            # it needs to return an equilized glyph object that is then drawn onto the view
+            # instead of maintaining a virtual copy that needs to be cleared and updated each draw
+            # more like tmp_glyph = self._equalized_glyph(_doodle_glyph); drawGlyph(tmp_glyph)
+            # vvvvvvvvvvvvvvvv
             self._eqSelected()
+            # ^^^^^^^^^^^^^^^^^
+            self.tmp_glyph.update()
             save()
-            stroke(0, 0, 0, 0.5)
+            stroke(random(), random(), random(), 1.0)
+            # stroke(0, 0, 0, 0.5)
             #if self.method == "hobby":
             #    fill(1, 0, 0, 0.9)
             #else:
