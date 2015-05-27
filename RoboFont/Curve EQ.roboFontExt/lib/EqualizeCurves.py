@@ -25,6 +25,7 @@ import vanilla
 from cmath import e, sqrt
 from math import atan2, degrees, sin, cos, pi, radians
 from math import sqrt as msqrt
+from copy import copy
 from defconAppKit.windows.baseWindow import BaseWindowController
 from mojo.extensions import getExtensionDefault, setExtensionDefault
 
@@ -274,8 +275,7 @@ class CurveEqualizer(BaseWindowController):
             # and then draws the current glyph in its place, then equilizes that glyph in a different
             # method, then draws it into this view.
             # The problem is the outline is not updating. If you commit the change it shows up, but this memory
-            # glyph isn't getting redrawn ever. Ether the outlines are getting changed and the problem is in 
-            # the view, or the glyph is not getting updated and is redrawing the same thing over and over.
+            # glyph isn't getting redrawn ever. The glyph is redrawing the same thing over and over.
             #######
             self.tmp_glyph.clear()
             self.tmp_glyph.appendGlyph(_doodle_glyph)
@@ -330,6 +330,7 @@ class CurveEqualizer(BaseWindowController):
                 c = c * curvature
                 a = a * curvature
                 
+                # THESE LINES ARE ACTUALLY MOVING POINTS
                 # move first control point
                 p1.x, p1.y = self.getNewCoordinates(p1, p0, p2, c)
                 
@@ -347,6 +348,7 @@ class CurveEqualizer(BaseWindowController):
         # calculate equal distance
         d = (a + b + c) / 3.0
     
+        # THESE LINES ARE ACTUALLY MOVING POINTS
         # move first control point
         p1.x, p1.y = self.getNewCoordinates(p1, p0, p2, d)
         
@@ -369,7 +371,8 @@ class CurveEqualizer(BaseWindowController):
         #print "Out:", q0, q1, q2, q3
         scaleX = (p3.x - p0.x) / (q3[0] - q0[0])
         scaleY = (p3.y - p0.y) / (q3[1] - q0[1])
-        #print scaleX, scaleY
+
+        # THESE LINES ARE ACTUALLY MOVING POINTS
         p1.x = (q1[0] - q0[0]) * scaleX + q0[0]
         p1.y = (q1[1] - q0[1]) * scaleY + q0[1]
         p2.x = (q2[0] - q0[0]) * scaleX + q0[0]
@@ -389,13 +392,53 @@ class CurveEqualizer(BaseWindowController):
         w1 = complex(sin(rad1), cos(rad1))
         alpha, beta = 1 * tension, 1 * tension
         u, v = controls(complex(p0.x, p0.y), w0, alpha, beta, w1, complex(p3.x, p3.y))
+
+        # THESE LINES ARE ACTUALLY MOVING POINTS
         p1.x, p1.y = u.real, u.imag
         p2.x, p2.y = v.real, v.imag
         return p1, p2
     
     # The main method, check which EQ should be applied and do it (or just apply it on the preview glyph)
     
+    def _eqContours(self, contours=[], round_points=False):
+        modified_contours = []
+        for contour in contours:
+            reference_contour = contours[contourIndex]
+            modified_contour = copy(reference_contour)
+            for i in range(len(reference_contour.segments)):
+                reference_segment = reference_contour[i]
+                modify_segment = modified_contour[i]
+                if reference_segment.selected and reference_segment.type == "curve":
+                    # last point of the previous segment
+                    p0 = modified_contour[i-1][-1]
+                    if len(modify_segment.points) == 3:
+                        p1, p2, p3 = modify_segment.points
+                    
+                        if self.method == "free":
+                            p1, p2 = self.eqFL(p0, p1, p2, p3, self.curvatureFree)
+                        elif self.method == "fl":
+                            p1, p2 = self.eqFL(p0, p1, p2, p3)
+                        elif self.method == "thirds":
+                            p1, p2 = self.eqThirds(p0, p1, p2, p3)
+                        elif self.method == "quad":
+                            p1, p2 = self.eqQuadratic(p0, p1, p2, p3)
+                        elif self.method == "adjust":
+                            p1, p2 = self.eqFL(p0, p1, p2, p3, self.curvature)
+                        elif self.method == "hobby":
+                            p1, p2 = self.eqSpline(p0, p1, p2, p3, self.tension)
+                        else:
+                            print "WARNING: Unknown equalize method: %s" % self.method
+                        if round_points:
+                            p1.round()
+                            p2.round()
+            modified_contours.append(modified_contour)
+
+
+        print contours == modified_contours
+        return modified_contours
+
     def _eqSelected(self, sender=None):
+        # OK, WTF, how does this method work? *
         reference_glyph = CurrentGlyph()
         if reference_glyph.selection != []:
             if sender is None:
@@ -416,6 +459,8 @@ class CurveEqualizer(BaseWindowController):
                         if len(modify_segment.points) == 3:
                             p1, p2, p3 = modify_segment.points
                         
+                            # * Even though these are setting vars, this method doesn't return anything
+                            #   points are actually getting moved around in these "eq" methods. Super messy.
                             if self.method == "free":
                                 p1, p2 = self.eqFL(p0, p1, p2, p3, self.curvatureFree)
                             elif self.method == "fl":
